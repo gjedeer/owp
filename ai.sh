@@ -181,11 +181,13 @@ install_product() {
   mv $INSTALL_DIR $INSTALL_DIR.bak
   git clone git://github.com/gjedeer/owp.git $INSTALL_DIR
   # delete stuff from repo that could conflict with existing installation
-  find $INSTALL_DIR -name \*.log -delete
-  rm $INSTALL_DIR/config/database.yml
-  find $INSTALL_DIR/db -name \*.sqlite3 -delete
+  if [ "x$UPGRADE" = "x1" ]; then
+	find $INSTALL_DIR -name \*.log -delete
+	rm $INSTALL_DIR/config/database.yml
+	find $INSTALL_DIR/db -name \*.sqlite3 -delete
+    cp -R $INSTALL_DIR.bak/* $INSTALL_DIR/
+  fi
   # copy backed up stuff
-  cp -R $INSTALL_DIR.bak/* $INSTALL_DIR/
   rm -rf $INSTALL_DIR.bak
   
   if [ "x$UPGRADE" = "x1" ]; then
