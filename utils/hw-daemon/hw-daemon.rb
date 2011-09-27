@@ -71,6 +71,15 @@ class HwDaemonApiHandler < XMLRPC::WEBrickServlet
     $LOG.debug("Writing file: #{filename}")
   end
 
+  def read_file(filename)
+	  if File.exists?(filename)
+		  f = File.open(filename, "r")
+		  f.read
+	  else
+		  nil
+	  end
+  end
+
   def service(request, response)
     WEBrick::HTTPAuth.basic_auth(request, response, '') do |user, password|
       user == 'admin' && password == $AUTH_KEY

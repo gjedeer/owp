@@ -595,7 +595,7 @@ en:
             description: "Description"
             ve_state:
               title: "Server state"
-              suspend: "suspend (recommended)"
+              suspend: "suspend"
               stop: "stop"
               live: "keep running"
           button_create: "Create"

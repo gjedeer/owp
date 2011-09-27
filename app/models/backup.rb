@@ -4,8 +4,12 @@ class Backup < ActiveRecord::Base
   def date
     match = name.match(/^ve-dump\.(\d+)\.(\d+)\.tar$/)
 	if match.nil?
-		match = name.match(/^vzdump-openvz-(\d+)-(\d{4})_(\d\d)_(\d\d)-(\d\d)_(\d\d)_(\d\d).tgz$/)
-		Time.local(match[2], match[3],  match[4],  match[5],  match[6],  match[7])  
+		match = name.match(/^vzdump-openvz-(\d+)-(\d{4})_(\d+)_(\d+)-(\d+)_(\d+)_(\d+)\.tgz$/)
+		if match.nil?
+           	name
+		else
+			Time.local(match[2], match[3],  match[4],  match[5],  match[6],  match[7])  
+		end
 	else
 	    Time.at(match[2].to_i)
 	end
@@ -20,10 +24,11 @@ class Backup < ActiveRecord::Base
 
   def self.backup(virtual_server)
     veid = virtual_server.identity
-    name = "ve-dump.#{veid}.#{Time.now.to_i}.tar"
-    backup_name = "#{virtual_server.hardware_server.backups_dir}/#{name}"
-    job = virtual_server.hardware_server.rpc_client.job('tar', "-cf #{backup_name} #{virtual_server.private_dir}")
-    server_backup = Backup.new(:name => name, :virtual_server_id => virtual_server.id)
+    job = virtual_server.hardware_server.rpc_client.job('vzdump', "--compress --snapshot --script /root/bin/vzdump-hook.py #{veid}")
+
+	retries = 0
+
+    server_backup = Backup.new(:name => 'unknown', :virtual_server_id => virtual_server.id)
     { :job => job, :backup => server_backup }
   end
 

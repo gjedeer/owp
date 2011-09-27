@@ -55,6 +55,13 @@ class Admin::BackupsController < Admin::Base
       end
 
       job.finish
+
+	  # check created file name and size
+      name = virtual_server.hardware_server.rpc_client.read_file("/var/lib/vz/dump/#{virtual_server.identity}")
+      backup.name = name
+      backup.size = virtual_server.hardware_server.rpc_client.exec("du -m /var/lib/vz/dump/#{name}")['output'].to_i
+
+
       backup.save
       hardware_server.sync_backups
 

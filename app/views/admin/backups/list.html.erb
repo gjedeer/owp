@@ -28,7 +28,6 @@ Ext.onReady(function() {
         inputValue: 'suspend',
         name: 've_state',
         xtype: 'radio',
-        checked: true
       }, {
         boxLabel: '<%= tjs('admin.backups.form.create.field.ve_state.stop') %>',
         inputValue: 'stop',
@@ -38,7 +37,8 @@ Ext.onReady(function() {
         boxLabel: '<%= tjs('admin.backups.form.create.field.ve_state.live') %>',
         inputValue: 'live',
         xtype: 'radio',
-        name: 've_state'
+        name: 've_state',
+        checked: true
       }]
     });
     

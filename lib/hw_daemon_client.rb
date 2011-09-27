@@ -74,7 +74,11 @@ class HwDaemonClient
     rpc_call('hwDaemon.write_file', filename, content)
   end
 
+  def read_file(filename)
+    rpc_call('hwDaemon.read_file', filename)
+  end
   private
+
 
   def rpc_call(*args)
     begin
