@@ -33,9 +33,7 @@ class Backup < ActiveRecord::Base
   end
 
   def restore
-    virtual_server.hardware_server.rpc_client.exec('rm', "-rf #{virtual_server.private_dir}") if virtual_server.private_dir.length > 1
-    backup_name = "#{virtual_server.hardware_server.backups_dir}/#{name}"
-    virtual_server.hardware_server.rpc_client.job('tar', "-xf #{backup_name} -C /")
+    virtual_server.hardware_server.rpc_client.job('/root/bin/vzrestore-ftp.py', "#{name} #{virtual_server.identity}")
   end
 
 end
