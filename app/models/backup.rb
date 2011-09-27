@@ -3,7 +3,12 @@ class Backup < ActiveRecord::Base
 
   def date
     match = name.match(/^ve-dump\.(\d+)\.(\d+)\.tar$/)
-    Time.at(match[2].to_i)
+	if match.nil?
+		match = name.match(/^vzdump-openvz-(\d+)-(\d{4})_(\d\d)_(\d\d)-(\d\d)_(\d\d)_(\d\d).tgz$/)
+		Time.local(match[2], match[3],  match[4],  match[5],  match[6],  match[7])  
+	else
+	    Time.at(match[2].to_i)
+	end
   end
 
   def delete_physically
