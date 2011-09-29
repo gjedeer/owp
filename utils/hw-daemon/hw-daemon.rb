@@ -76,7 +76,7 @@ class HwDaemonApiHandler < XMLRPC::WEBrickServlet
 		  f = File.open(filename, "r")
 		  f.read
 	  else
-		  nil
+		  ""
 	  end
   end
 
