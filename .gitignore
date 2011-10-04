@@ -12,3 +12,5 @@ build/build.log
 build/ovz-web-panel-*.tgz
 build/ovz-web-panel
 *.sw?
+utils/hw-daemon/certs/server.crt
+utils/hw-daemon/certs/server.key
