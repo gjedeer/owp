@@ -532,7 +532,7 @@ Ext.onReady(function() {
   }
   
   var backupAction = function() {
-    document.location.href = '/admin/backups/list?virtual_server_id=<%= @virtual_server.id %>';
+    document.location.href = '/admin/duplicity/list?virtual_server_id=<%= @virtual_server.id %>';
   }
   
   var cloneAction = function() {

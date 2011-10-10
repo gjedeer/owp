@@ -19,7 +19,7 @@ SSL_PKEY_FILE = CURRENT_DIR + "/certs/server.key"
 $SERVER_ADDRESS = "0.0.0.0"
 $SERVER_PORT = 7767
 $AUTH_KEY = ""
-$DEBUG = false
+$DEBUG = true
 $LOG = WEBrick::Log.new(LOG_FILE)
 
 $SSL_ENABLE = false
@@ -242,3 +242,5 @@ class HwDaemonUtil
   end
 
 end
+
+HwDaemonUtil.new

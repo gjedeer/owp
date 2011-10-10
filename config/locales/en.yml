@@ -571,6 +571,10 @@ en:
               name: "Name"
               soft_limit: "Barrier"
               hard_limit: "Limit"
+    duplicity:
+      grid:
+        column:
+          size: "Nr Volumes"
     backups:
       title: "Backups for virtual server {{name}}"
       grid:
