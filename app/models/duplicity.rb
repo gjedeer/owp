@@ -1,11 +1,22 @@
 class Duplicity
   attr_accessor :virtual_server, :date, :full, :volumes
 
+  def self.get_url()
+	url = nil
+	File.open('/etc/vzdup.conf').each { |line|
+		if line =~ /destination:\s+([^\s]+)/:
+			url = $1
+		end
+	}            
+	url
+  end
+
   def self.all(virtual_server)
-	duplicity_destination="scp://gdr@192.168.1.3/tmp/dup"
+	duplicity_destination = self.get_url
     hardware_server = virtual_server.hardware_server
 
-    result = `duplicity collection-status --no-encryption #{duplicity_destination}/#{hardware_server.host}/#{virtual_server.identity}`
+	print "duplicity collection-status --no-encryption #{duplicity_destination}/#{virtual_server.identity}"
+    result = `duplicity collection-status --no-encryption #{duplicity_destination}/#{virtual_server.identity}`
 #    print result
 	
 	backups = []

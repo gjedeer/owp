@@ -6,9 +6,15 @@
 # Author: GDR!
 #
 
+log = File.open('/var/log/vzbackup', 'a')
+
+log.write(Time.now.to_s + " Starting backup of #{VirtualServer.all.count} virtual machines\n")
+log.flush
+
 VirtualServer.all.each do |virtual_server|
   hardware_server = virtual_server.hardware_server
-  puts "CTID #{virtual_server.identity} on #{hardware_server.host} (#{virtual_server.ip_address})"
+  log.write(Time.now.to_s + " CTID #{virtual_server.identity} on #{hardware_server.host} (#{virtual_server.ip_address})\n")
+  log.flush
   result = virtual_server.backup
   job_id = result[:job]['job_id']
   backup = result[:backup]
@@ -21,11 +27,13 @@ VirtualServer.all.each do |virtual_server|
     job_running = true if hardware_server.rpc_client.job_status(job_id)['alive']
     break unless job_running
     sleep 10
-    print "."
+    log.write(Time.now.to_s + " waiting\n")
+    log.flush
   end
-  print "\n"
 
   job.finish
+  log.write(Time.now.to_s + " Finished backing up CTID #{virtual_server.identity} on #{hardware_server.host}\n")
+  log.flush
 
   # check created file name and size
   name = virtual_server.hardware_server.rpc_client.read_file("/var/lib/vz/dump/#{virtual_server.identity}")
@@ -35,3 +43,5 @@ VirtualServer.all.each do |virtual_server|
   backup.save
   hardware_server.sync_backups
 end # VirtualServer.all
+
+log.close

@@ -26,8 +26,6 @@ class Backup < ActiveRecord::Base
     veid = virtual_server.identity
     job = virtual_server.hardware_server.rpc_client.job('vzdump', "--compress --snapshot --script /root/bin/vzdump-hook.py #{veid}")
 
-	retries = 0
-
     server_backup = Backup.new(:name => 'unknown', :virtual_server_id => virtual_server.id)
     { :job => job, :backup => server_backup }
   end
