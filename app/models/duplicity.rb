@@ -61,7 +61,7 @@ class Duplicity
   def restore
     mylog = Logger.new("#{Rails.root}/log/my.log")
 	mylog.info('Ojajebie!' + @date.to_s + @virtual_server.id.to_s)
-    virtual_server.hardware_server.rpc_client.job('/root/vzdup/vzduprestore', "--force #{@date.iso8601(0)} #{@virtual_server.identity}")
+    virtual_server.hardware_server.rpc_client.job('/root/bin/vzduprestore', "--force #{@date.iso8601(0)} #{@virtual_server.identity}")
   end
 
 end
