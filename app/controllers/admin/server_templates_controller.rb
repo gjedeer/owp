@@ -48,6 +48,7 @@ class Admin::ServerTemplatesController < Admin::Base
       :start_on_boot => server_template.get_start_on_boot,
       :diskspace => server_template.get_diskspace,
       :memory => server_template.get_memory,
+      :vswap => server_template.get_vswap,
       :cpu_units => server_template.get_cpu_units,
       :cpus => server_template.get_cpus,
       :cpu_limit => server_template.get_cpu_limit,
@@ -59,12 +60,14 @@ class Admin::ServerTemplatesController < Admin::Base
 
     def server_templates_list(hardware_server)
       server_templates = hardware_server.server_templates
-      server_templates.map! { |item| {
-        :id => item.id,
-        :name => item.name,
-        :is_default => item.name == hardware_server.default_server_template,
-        :virtual_servers => VirtualServer.count(:conditions => ["hardware_server_id = ? AND orig_server_template = ?", hardware_server.id, item.name]),
-      }}
+      server_templates.map! do |item|
+        {
+          :id => item.id,
+          :name => item.name,
+          :is_default => item.name == hardware_server.default_server_template,
+          :virtual_servers => VirtualServer.count(:conditions => ["hardware_server_id = ? AND orig_server_template = ?", hardware_server.id, item.name]),
+        }
+      end
     end
 
 end

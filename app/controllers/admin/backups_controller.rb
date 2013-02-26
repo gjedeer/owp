@@ -55,15 +55,8 @@ class Admin::BackupsController < Admin::Base
       end
 
       job.finish
-
-	  # check created file name and size
-      name = virtual_server.hardware_server.rpc_client.read_file("/var/lib/vz/dump/#{virtual_server.identity}")
-      backup.name = name
-      backup.size = virtual_server.hardware_server.rpc_client.exec("du -m /var/lib/vz/dump/#{name}")['output'].to_i
-
-
+      backup.sync_size
       backup.save
-      hardware_server.sync_backups
 
       if 'running' == orig_ve_state
         case ve_state
@@ -113,13 +106,15 @@ class Admin::BackupsController < Admin::Base
 
     def backups_list(virtual_server)
       backups = virtual_server.backups
-      backups.map! { |backup| {
-        :id => backup.id,
-        :name => backup.name,
-        :description => backup.description,
-        :size => backup.size,
-        :archive_date => local_datetime(backup.date),
-      }}
+      backups.map! do |backup|
+        {
+          :id => backup.id,
+          :name => backup.name,
+          :description => backup.description,
+          :size => backup.size,
+          :archive_date => local_datetime(backup.date),
+        }
+      end
     end
 
 end

@@ -13,7 +13,7 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
     ],
     data: <%= @os_templates.to_json %>
   });
-  
+
   var serverTemplatesStore = new Ext.data.JsonStore({
     sortInfo: { field: 'name', direction: 'ASC' },
     fields: [
@@ -22,7 +22,7 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
     ],
     data: <%= @server_templates.to_json %>
   });
-  
+
   var ownersStore = new Ext.data.JsonStore({
     sortInfo: { field: 'login', direction: 'ASC' },
     fields: [
@@ -33,10 +33,9 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
   });
 
   var ipAddressesStore = new Ext.data.JsonStore({
-    url: '/admin/hardware-servers/free_ips_list_data?id=<%= @hardware_server.id %>',
+    url: '<%= url_for :controller => 'admin/hardware-servers', :action => 'free_ips_list_data', :id => @hardware_server.id %>' + '&mode=' + mode,
     root: 'data',
     autoLoad: true,
-    sortInfo: { field: 'address', direction: 'ASC' },
     fields: [
       { name: 'address' }
     ]
@@ -44,8 +43,8 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
 
   var formEditVirtualServer = new Owp.form.BasicForm({
     labelWidth: 180,
-    waitMsgTarget: true,
-    url: '/admin/virtual-servers/create?hardware_server_id=<%= @hardware_server.id %>',
+    waitMsgTarget: !Ext.isGecko,
+    url: '<%= url_for :controller => 'admin/virtual-servers', :action => 'create', :hardware_server_id => @hardware_server.id %>',
     autoHeight: true,
     keys: [{
       key: Ext.EventObject.ENTER,
@@ -80,13 +79,14 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
           autoHeight: true,
           defaults: { width: 155 },
           defaultType: 'textfield',
-          items: [{        
+          items: [{
             fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.identity') %>',
             name: 'identity',
             xtype: ('add' == mode) ? 'numberfield' : 'displayfield'
           }, {
             fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.os_template') %>',
             xtype: ('add' == mode) ? 'combo' : 'displayfield',
+            resizable: true,
             hiddenName: 'orig_os_template',
             valueField: 'name',
             displayField: 'name',
@@ -102,6 +102,7 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
           }, {
             fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.server_template') %>',
             xtype: 'combo',
+            resizable: true,
             hiddenName: 'orig_server_template',
             valueField: 'name',
             displayField: 'name',
@@ -118,10 +119,17 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
                 if ('add' == mode) {
                   formEditVirtualServer.getForm().load({
                     waitMsg: '<%= tjs('form.loading') %>',
-                    success: function() {
+                    success: function(form, action) {
+                      <% if @hardware_server.vswap %>
+                        if (action.result.data.vswap_enabled) {
+                          form.findField('fieldVswap').enable();
+                        } else {
+                          form.findField('fieldVswap').disable();
+                        }
+                      <% end %>
                       windowEditVirtualServer.focus();
                     },
-                    url: '/admin/virtual-servers/load_template',
+                    url: '<%= url_for :controller => 'admin/virtual-servers', :action => 'load_template' %>',
                     params: {
                       id: record.data.id
                     }
@@ -142,6 +150,7 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
           items: [{
             fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.ip_address') %>',
             xtype: 'combo',
+            resizable: true,
             valueField: 'address',
             displayField: 'address',
             name: 'ip_address',
@@ -172,6 +181,7 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
           }, {
             fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.owner') %>',
             xtype: 'combo',
+            resizable: true,
             mode: 'local',
             editable: false,
             forceSelection: true,
@@ -211,6 +221,12 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
             id: 'fieldMemory',
             emptyText: '<%= tjs('admin.virtual_servers.limits.unlimited') %>',
             name: 'memory'
+          <% if @hardware_server.vswap %>
+          }, {
+            fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.vswap') %>',
+            id: 'fieldVswap',
+            name: 'vswap'
+          <% end %>
           }, {
             fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.cpu_units') %>',
             id: 'fieldCpuUnits',
@@ -245,7 +261,7 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
           }]
         }, {
           xtype: 'fieldset',
-          title: '<%= tjs('admin.virtual_servers.form.create_server.fieldset.start_options') %>',
+          title: '<%= tjs('admin.virtual_servers.form.create_server.fieldset.misc') %>',
           autoHeight: true,
           defaultType: 'checkbox',
           labelWidth: 180,
@@ -261,12 +277,18 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
             checked: true,
             name: 'start_after_creation',
             id: 'checkboxStartAfterCreation'
+          }, {
+            fieldLabel: '<%= tjs('admin.virtual_servers.form.create_server.field.daily_backup') %>',
+            xtype: 'checkbox',
+            checked: false,
+            name: 'daily_backup',
+            id: 'checkboxDailyBackup'
           }]
         }]
       }]
     }]
   });
-  
+
   var windowEditVirtualServer = new Owp.form.BasicFormWindow({
     title: ('add' == mode)
       ? '<%= tjs('admin.virtual_servers.form.create_server.title') %>'
@@ -311,17 +333,17 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
       }
     }]
   });
-  
+
   windowEditVirtualServer.on('show', function() {
     if ('add' == mode) {
       formEditVirtualServer.getForm().reset();
-      
+
       var defaultOsTemplate = '<%= @hardware_server.default_os_template %>';
       var templateField = formEditVirtualServer.getForm().findField('orig_os_template');
       if (-1 != templateField.getStore().findExact('name', defaultOsTemplate)) {
         templateField.setValue(defaultOsTemplate);
       }
-      
+
       var defaultServerTemplate = '<%= @hardware_server.default_server_template %>';
       var templateField = formEditVirtualServer.getForm().findField('orig_server_template');
       if (-1 != templateField.getStore().findExact('name', defaultServerTemplate)) {
@@ -330,7 +352,7 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
         var templateRecord = templateField.getStore().getAt(templateIndex);
         templateField.fireEvent('select', templateField, templateRecord);
       }
-      
+
       windowEditVirtualServer.focus();
     } else {
       <% if @virtual_server %>
@@ -338,17 +360,17 @@ var showVirtualServerEditForm = function(mode, grid, statsGrid) {
       <% else %>
         var selectedNodeId = grid.getSelectionModel().getSelected().id;
       <% end %>
-      
+
       formEditVirtualServer.getForm().load({
         waitMsg: '<%= tjs('form.loading') %>',
         success: function() {
           windowEditVirtualServer.focus();
         },
-        url: '/admin/virtual-servers/load_data?id=' + selectedNodeId
+        url: '<%= url_for :controller => 'admin/virtual-servers', :action => 'load_data' %>?id=' + selectedNodeId
       });
       formEditVirtualServer.getForm().findField('id').setValue(selectedNodeId);
     }
   });
-  
+
   windowEditVirtualServer.show();
 }

@@ -69,6 +69,7 @@ class HwDaemonApiHandler < XMLRPC::WEBrickServlet
   def write_file(filename, content)
     File.open(filename, 'w') { |file| file.write(content) }
     $LOG.debug("Writing file: #{filename}")
+    File.exists?(filename)
   end
 
   def read_file(filename)
@@ -126,7 +127,7 @@ class HwDaemonUtil
       when 'start'
         do_start
       when 'stop'
-        do_stop
+        exit do_stop
       when 'restart'
         do_restart
       when 'status'
@@ -134,6 +135,14 @@ class HwDaemonUtil
       else
         do_help
     end
+  end
+
+  def puts_ok(message)
+    puts "\033[00;32m[OK]\033[00m " + message
+  end
+
+  def puts_fail(message)
+    puts "\033[00;31m[FAIL]\033[00m " + message
   end
 
   def check_environment
@@ -181,12 +190,29 @@ class HwDaemonUtil
 
   def do_stop
     if (File.exists?(PID_FILE))
-      pid = File.read(PID_FILE)
-      $LOG.debug("Killing process with PID #{pid.to_i}")
-      Process.kill('TERM', pid.to_i)
+      pid = File.read(PID_FILE).to_i
+
+      begin
+        Process.kill(0, pid)
+      rescue
+        $LOG.debug("Unable to find process with PID #{pid}")
+        puts_fail "Daemon probably died."
+        delete_pid_file
+        return 1
+      end
+
+      $LOG.debug("Killing process with PID #{pid}")
+
+      begin
+        Process.kill('TERM', pid)
+      rescue
+        $LOG.debug("Unable to kill process with PID #{pid}")
+        puts_fail "Unable to stop daemon."
+      end
     end
 
-    puts "Daemon was stopped."
+    puts_ok "Daemon was stopped."
+    return 0
   end
 
   def do_restart
@@ -196,16 +222,25 @@ class HwDaemonUtil
 
   def do_status
     if (File.exists?(PID_FILE))
-      puts "Daemon is running."
+      pid = File.read(PID_FILE).to_i
+
+      begin
+        Process.kill(0, pid)
+      rescue
+        puts_fail "Daemon probably died."
+        exit 1
+      end
+
+      puts_ok "Daemon is running."
     else
-      puts "Daemon is stopped."
-      exit(1)
+      puts_fail "Daemon is stopped."
+      exit 1
     end
   end
 
   def do_help
     puts "Usage: ruby hw-daemon.rb (start|stop|restart|status|help)"
-    exit(1)
+    exit 1
   end
 
   def load_config

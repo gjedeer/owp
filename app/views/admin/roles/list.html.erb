@@ -7,8 +7,8 @@ Ext.onReady(function() {
   function showRoleEditForm(mode) {
     var formEditRole = new Owp.form.BasicForm({
       labelWidth: 150,
-      waitMsgTarget: true,
-      url: '/admin/roles/update',
+      waitMsgTarget: !Ext.isGecko,
+      url: '<%= url_for :controller => 'admin/roles', :action => 'update' %>',
       autoHeight: true,
       defaults: { width: 200 },
       keys: [{
@@ -43,12 +43,14 @@ Ext.onReady(function() {
         autoWidth: true,
         defaultType: 'numberfield',
         defaults: { labelStyle: 'width: 260px', style: 'width: 80px' },
-        items: <%= @limits.map { |item,value| {
+        items: <%= @limits.map do |item, value|
+          {
             'fieldLabel' => t('admin.roles.form.create.limits.' + item),
             'name' => "limits[#{item}]",
             'value' => value,
             'emptyText' => tjs('admin.roles.form.create.limits.unlimited'),
-        } }.to_json %>
+          }
+        end.to_json %>
       }]
     });
     
@@ -115,7 +117,7 @@ Ext.onReady(function() {
             }
             windowEditRole.focus();
           },
-          url: '/admin/roles/load_data',
+          url: '<%= url_for :controller => 'admin/roles', :action => 'load_data' %>',
           params: {
             id: selectedNode.id
           }
@@ -143,7 +145,7 @@ Ext.onReady(function() {
         if ('yes' == button) { 
           Owp.list.groupAction({
             gridName: 'rolesGrid',
-            url: '/admin/roles/delete',
+            url: '<%= url_for :controller => 'admin/roles', :action => 'delete' %>',
             waitMsg: '<%= tjs('form.performing_task') %>',
             failure: {
               title: '<%= tjs('form.error.title') %>',
@@ -156,7 +158,7 @@ Ext.onReady(function() {
   }
   
   var store = new Ext.data.JsonStore({
-    url: '/admin/roles/list_data',
+    url: '<%= url_for :controller => 'admin/roles', :action => 'list_data' %>',
     root: 'data',
     data: <%= { :data => @roles_list }.to_json %>,
     autoLoad: true,
@@ -224,19 +226,19 @@ Ext.onReady(function() {
       text: '<%= tjs('admin.roles.grid.button.add') %>',
       handler: addRole,
       cls: 'x-btn-text-icon',
-      icon: '/images/add.png'
+      icon: '<%= image_path 'add.png' %>'
     }, {
       text: '<%= tjs('admin.roles.grid.button.remove') %>',
       handler: removeRole,
       cls: 'x-btn-text-icon',
-      icon: '/images/delete.png',
+      icon: '<%= image_path 'delete.png' %>',
       ref: '../removeButton',
       disabled: true
     }, {
       text: '<%= tjs('admin.roles.grid.button.edit') %>',
       handler: editRole,
       cls: 'x-btn-text-icon',
-      icon: '/images/wrench.png',
+      icon: '<%= image_path 'wrench.png' %>',
       ref: '../editButton',
       disabled: true
     }]

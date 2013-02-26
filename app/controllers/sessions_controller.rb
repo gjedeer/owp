@@ -9,7 +9,7 @@ class SessionsController < ApplicationController
     if request.post?
       logout_keeping_session!
       user = User.authenticate(params[:login], params[:password])
-      if user && user.enabled
+      if user && user.enabled && !user.ip_restriction?(request.remote_ip)
         EventLog.info("user.login.ok", { :login => user.login })
         self.current_user = user
         new_cookie_flag = (params[:remember_me] == "on")
@@ -25,9 +25,12 @@ class SessionsController < ApplicationController
           format.iphone { redirect_to :controller => 'iphone/dashboard' }
         end
       else
-        if user
+        if user and !user.enabled
           message =  t('login.locked_user')
           EventLog.error("user.login.locked_user", { :login => user.login })
+        elsif user and user.ip_restriction?(request.remote_ip)
+          message =  t('login.ip_restricted')
+          EventLog.error("user.login.ip_restricted", { :login => user.login })
         else
           message = t('login.bad_login')
           known_user = User.find_by_login(params[:login])
@@ -38,7 +41,7 @@ class SessionsController < ApplicationController
           end
         end
 
-        logger.warn "Failed login for '#{params[:login]}' from #{request.remote_ip} at #{Time.now.utc}"
+        logger.warn "Failed login for '#{params[:login]}' from #{request.remote_ip} at #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}"
         respond_to do |format|
           format.html { render :json => { :success => false, :message => message } }
           format.iphone { flash.now[:error] = message }
@@ -59,7 +62,7 @@ class SessionsController < ApplicationController
   def destroy
     EventLog.info("user.logout", { :login => current_user.login }) if current_user
     logout_killing_session!
-    redirect_back_or_default('/')
+    redirect_back_or_default login_path
   end
 
   def restore_password
@@ -83,7 +86,7 @@ class SessionsController < ApplicationController
       end
     end
 
-    redirect_to '/' and return if !@user
+    redirect_to login_path and return if !@user
 
     if request.post?
       @user.password = params[:password]

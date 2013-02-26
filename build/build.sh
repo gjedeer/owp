@@ -23,6 +23,14 @@ cd `dirname $0`
     VERSION=`grep "PRODUCT_VERSION" config/environment.rb | sed -e 's/[^0-9.]//g'`
     echo $VERSION > version
 
+    for TEXT_FILE in README INSTALL CHANGELOG; do
+      mv $TEXT_FILE.md $TEXT_FILE
+    done
+
+    # remove extra markup for better readability
+    sed -i '/!\[/d' README
+    sed -i 's/^##\? //' README
+
     # prepare database
     rake db:migrate RAILS_ENV="production"
 
@@ -31,7 +39,7 @@ cd `dirname $0`
     # minimize distribution size
     rm -rf build vendor/rails/railties/doc/guides vendor/rails/activerecord/test
 
-    rm -rf .git
+    rm -rf .git .gitignore .travis.yml
   cd ..
 
   [ -f $PROJECT-$VERSION.tgz ] && rm $PROJECT-$VERSION.tgz || true

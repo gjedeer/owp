@@ -54,6 +54,16 @@ config_defaults = {
     'host' => 'example.com',
     'login_pattern' => 'uid=<login>,ou=people,dc=example,dc=com',
   },
+  'email' => {
+    'from' => '',
+  },
+  'base_url' => '',
+  'ip_restriction' => {
+    'admin_ips' => '',
+  },
+  'mobile' => {
+    'special_ui' => true,
+  }
 }
 
 def hashes2ostruct(object)
@@ -75,3 +85,5 @@ end
 config_file_name = "#{Rails.root}/config/config.yml"
 config = File.exist?(config_file_name) ? (YAML.load_file(config_file_name) || {}) : {}
 AppConfig = hashes2ostruct(config_defaults.deep_merge(config))
+
+ActionController::Base.relative_url_root = AppConfig.base_url

@@ -1,9 +1,11 @@
 class ServerTemplate < ActiveRecord::Base
+  include ApplicationHelper
+
   belongs_to :hardware_server
   attr_accessible :name, :start_on_boot, :nameserver, :search_domain,
-    :diskspace, :memory, :cpu_units, :cpus, :cpu_limit, :raw_limits
+    :diskspace, :memory, :cpu_units, :cpus, :cpu_limit, :raw_limits, :vswap
   attr_accessor :start_on_boot, :nameserver, :search_domain, :diskspace,
-    :memory, :cpu_units, :cpus, :cpu_limit, :raw_limits
+    :memory, :cpu_units, :cpus, :cpu_limit, :raw_limits, :vswap
   validates_uniqueness_of :name, :scope => :hardware_server_id
 
   def delete_physically
@@ -20,20 +22,18 @@ class ServerTemplate < ActiveRecord::Base
 
     limits = [
       'KMEMSIZE', 'LOCKEDPAGES', 'SHMPAGES', 'NUMPROC',
-      'PHYSPAGES', 'VMGUARPAGES', 'OOMGUARPAGES', 'NUMTCPSOCK', 'NUMFLOCK',
+      'VMGUARPAGES', 'OOMGUARPAGES', 'NUMTCPSOCK', 'NUMFLOCK',
       'NUMPTY', 'NUMSIGINFO', 'TCPSNDBUF', 'TCPRCVBUF', 'OTHERSOCKBUF',
       'DGRAMRCVBUF', 'NUMOTHERSOCK', 'DCACHESIZE', 'NUMFILE',
       'AVNUMPROC', 'NUMIPTENT', 'DISKINODES'
     ]
 
-    limits << 'SWAPPAGES' if (hardware_server.vzctl_version.split('.').map(&:to_i) <=> [3, 0, 24]) >= 0
-
     result = []
 
-    limits.each { |limit|
+    limits.each do |limit|
       limit_values = get_parsed_limit(@config.get(limit))
       result.push({ :name => limit, :soft_limit => limit_values[0], :hard_limit => limit_values[1] })
-    }
+    end
 
     result
   end
@@ -49,15 +49,22 @@ class ServerTemplate < ActiveRecord::Base
     content << "CPUS=\"#{cpus}\"\n" unless cpus.blank?
     content << "CPULIMIT=\"#{cpu_limit}\"\n" unless cpu_limit.blank?
 
-    privvmpages = 0 == memory.to_i ? 'unlimited' : memory.to_i * 1024 / 4
-    content << "PRIVVMPAGES=\"#{privvmpages}:#{privvmpages}\"\n"
+    if vswap.to_i > 0 and hardware_server.vswap
+      content << "PHYSPAGES=\"0:#{memory}M\"\n"
+      content << "SWAPPAGES=\"0:#{vswap}M\"\n"
+    else
+      privvmpages = 0 == memory.to_i ? 'unlimited' : memory.to_i * 1024 / 4
+      content << "PRIVVMPAGES=\"#{privvmpages}:#{privvmpages}\"\n"
+      content << "PHYSPAGES=\"unlimited\"\n"
+    end
+
     disk = 0 == diskspace.to_i ? 'unlimited' : diskspace.to_i * 1024
     content << "DISKSPACE=\"#{disk}:#{disk}\"\n"
 
     # some hard-coded values
     content << "QUOTATIME=\"0\"\n"
 
-    raw_limits.each { |limit|
+    raw_limits.each do |limit|
       limit['soft_limit'] = 'unlimited' if '' == limit['soft_limit']
       limit['hard_limit'] = 'unlimited' if '' == limit['hard_limit']
       if limit['soft_limit'] == limit['hard_limit']
@@ -65,7 +72,7 @@ class ServerTemplate < ActiveRecord::Base
       else
         content << limit['name'] + "=\"" + limit['soft_limit'].to_s + ":" + limit['hard_limit'].to_s + "\"\n"
       end
-    }
+    end
 
     hardware_server.rpc_client.write_file("/etc/vz/conf/ve-#{self.name}.conf-sample", content)
 
@@ -89,14 +96,19 @@ class ServerTemplate < ActiveRecord::Base
 
   def get_diskspace
     load_config
-    diskspace_limit = get_parsed_limit(@config.get("DISKSPACE"))
-    0 == diskspace_limit.last.to_i ? '' : (diskspace_limit.last.to_i / 1024)
+    diskspace_limit = get_diskspace_mb(@config.get("DISKSPACE"))
+    0 == diskspace_limit ? '' : diskspace_limit
   end
 
   def get_memory
     load_config
-    memory_limit = get_parsed_limit(@config.get("PRIVVMPAGES"))
-    0 == memory_limit.last.to_i ? '' : (memory_limit.last.to_i / 1024 * 4)
+
+    if vswap_enabled?
+      get_ram_mb(@config.get('PHYSPAGES'))
+    else
+      memory_limit = get_parsed_limit(@config.get("PRIVVMPAGES"))
+      0 == memory_limit.last.to_i ? '' : (memory_limit.last.to_i / 1024 * 4)
+    end
   end
 
   def get_cpu_units
@@ -112,6 +124,17 @@ class ServerTemplate < ActiveRecord::Base
   def get_cpu_limit
     load_config
     @config.get("CPULIMIT")
+  end
+
+  def vswap_enabled?
+    load_config
+    nil != @config.get("SWAPPAGES")
+  end
+
+  def get_vswap
+    load_config
+    vswap_limit = get_ram_mb(@config.get("SWAPPAGES"))
+    0 == vswap_limit ? '' : vswap_limit
   end
 
   private

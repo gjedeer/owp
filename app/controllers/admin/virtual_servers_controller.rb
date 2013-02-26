@@ -45,6 +45,7 @@ class Admin::VirtualServersController < Admin::Base
     end
     virtual_server.attributes = params
     virtual_server.start_on_boot = params.key?(:start_on_boot)
+    virtual_server.daily_backup = params.key?(:daily_backup)
 
     if virtual_server.save_physically
       render :json => { :success => true }
@@ -64,10 +65,12 @@ class Admin::VirtualServersController < Admin::Base
       :ip_address => virtual_server.ip_address,
       :host_name => virtual_server.host_name,
       :start_on_boot => virtual_server.start_on_boot,
+      :daily_backup => virtual_server.daily_backup,
       :nameserver => virtual_server.nameserver,
       :search_domain => virtual_server.search_domain,
       :diskspace => 0 == virtual_server.diskspace ? '' : virtual_server.diskspace,
       :memory => 0 == virtual_server.memory ? '' : virtual_server.memory,
+      :vswap => 0 == virtual_server.vswap ? '' : virtual_server.vswap,
       :cpu_units => virtual_server.cpu_units,
       :cpus => virtual_server.cpus,
       :cpu_limit => virtual_server.cpu_limit,
@@ -128,22 +131,22 @@ class Admin::VirtualServersController < Admin::Base
     end
 
     @ram_max = @virtual_server.memory
-    @ram_usage = !is_running ? [] : Watchdog.get_ve_counters_queue('_memory', @virtual_server.id).map { |counter|
+    @ram_usage = !is_running ? [] : Watchdog.get_ve_counters_queue('_memory', @virtual_server.id).map do |counter|
       ram = counter[:held].to_i / (1024 * 1024)
       @ram_max = ram if ram > @ram_max
       { 'time' => counter[:created_at].min, 'usage' => ram }
-    }
+    end
 
     @disk_max = @virtual_server.diskspace
-    @disk_usage = !is_running ? [] : Watchdog.get_ve_counters_queue('_diskspace', @virtual_server.id).map { |counter|
+    @disk_usage = !is_running ? [] : Watchdog.get_ve_counters_queue('_diskspace', @virtual_server.id).map do |counter|
       diskspace = counter[:held].to_i / (1024 * 1024)
       @disk_max = diskspace if diskspace > @disk_max
       { 'time' => counter[:created_at].min, 'usage' => diskspace }
-    }
+    end
 
-    @cpu_usage = !is_running ? [] : Watchdog.get_ve_counters_queue('_cpu_usage', @virtual_server.id).map { |counter|
+    @cpu_usage = !is_running ? [] : Watchdog.get_ve_counters_queue('_cpu_usage', @virtual_server.id).map do |counter|
       { 'time' => counter[:created_at].min, 'usage' => counter[:held].to_i }
-    }
+    end
   end
 
   def get_properties
@@ -180,6 +183,8 @@ class Admin::VirtualServersController < Admin::Base
       :cpus => server_template.get_cpus,
       :cpu_limit => server_template.get_cpu_limit,
       :memory => server_template.get_memory,
+      :vswap => server_template.get_vswap,
+      :vswap_enabled => server_template.vswap_enabled?,
     }}
   end
 
@@ -287,7 +292,7 @@ class Admin::VirtualServersController < Admin::Base
           :value => virtual_server.identity,
         }, {
           :parameter => t('admin.virtual_servers.form.create_server.field.status'),
-          :value => '<img src="/images/' + (('running' == virtual_server.real_state) ? 'run' : 'stop') + '.png"/>',
+          :value => "<img src=\"#{base_url}/images/" + (('running' == virtual_server.real_state) ? 'run' : 'stop') + '.png"/>',
         }, {
           :parameter => t('admin.virtual_servers.form.create_server.field.os_template'),
           :value => virtual_server.orig_os_template,

@@ -1,5 +1,5 @@
 var storeSearch = new Ext.data.JsonStore({
-  url: '/admin/search',
+  url: '<%= url_for :controller => 'admin/search' %>',
   root: 'data',
   fields: [
     { name: 'item' }
@@ -29,7 +29,7 @@ var searchGrid = new Ext.grid.GridPanel({
 
 var formSearch = new Owp.form.BasicForm({
   labelWidth: 100,
-  waitMsgTarget: true,
+  waitMsgTarget: !Ext.isGecko,
   autoHeight: true,
   keys: [{
     key: Ext.EventObject.ENTER,

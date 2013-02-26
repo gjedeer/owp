@@ -1,4 +1,6 @@
 class HardwareServer < ActiveRecord::Base
+  include ApplicationHelper
+
   attr_accessible :host, :auth_key, :description, :daemon_port, :use_ssl
   validates_uniqueness_of :host
   validates_numericality_of :daemon_port, :only_integer => true, :greater_than => 1023, :less_than => 49152
@@ -38,7 +40,7 @@ class HardwareServer < ActiveRecord::Base
     require 'net/sftp'
 
     begin
-      Net::SSH.start(host, 'root', :password => root_password) do |ssh|
+      Net::SSH.start(host, 'root', :password => root_password, :config => false, :user_known_hosts_file => [], :keys => []) do |ssh|
         ssh.sftp.connect do |sftp|
           if !sftp_file_readable(sftp, '/proc/vz/version')
             self.errors.add :host, :openvz_not_found
@@ -88,58 +90,50 @@ class HardwareServer < ActiveRecord::Base
 
     os_templates_list = os_templates_on_server.collect { |item| item.split[1] }
 
-    os_templates.each { |template|
-      if !os_templates_list.include?(template.name + '.tar.gz')
-        template.destroy
-      end
-    }
+    os_templates.each do |template|
+      template.destroy unless os_templates_list.include?(template.name + '.tar.gz')
+    end
 
-    os_templates_on_server.each { |template_record|
+    os_templates_on_server.each do |template_record|
       size, template_name = template_record.split
       template_name.sub!(/\.tar\.gz/, '')
 
       os_template = OsTemplate.find_or_create_by_name_and_hardware_server_id(template_name, self.id)
       os_template.size = size.to_i
       os_template.save
-    }
+    end
   end
 
   def sync_server_templates
     path = '/etc/vz/conf';
     server_templates_on_server = rpc_client.exec('ls', "#{path}/ve-*.conf-sample")['output'].split
 
-    server_templates.each { |template|
-      if !server_templates_on_server.include?("#{path}/ve-" + template.name + '.conf-sample')
-        template.destroy
-      end
-    }
+    server_templates.each do |template|
+      template.destroy unless server_templates_on_server.include?("#{path}/ve-" + template.name + '.conf-sample')
+    end
 
-    server_templates_on_server.each { |template_name|
+    server_templates_on_server.each do |template_name|
       template_name.sub!(/\/etc\/vz\/conf\/ve\-(.*)\.conf\-sample/, '\1')
       if !ServerTemplate.find_by_name_and_hardware_server_id(template_name, self.id)
         server_template = ServerTemplate.new(:name => template_name)
         server_template.hardware_server = self
         server_template.save
       end
-    }
+    end
   end
 
   def sync_virtual_servers
     ves_on_server = rpc_client.exec('vzlist', '-a -H -o veid,hostname,ip,status')['output'].split("\n")
     # skip error lines
-    ves_on_server = ves_on_server.find_all { |item| item =~ /^\s+\d+/ }
+    ves_on_server = ves_on_server.find_all{ |item| item =~ /^\s*\d+/ }
 
-    ves_ids_on_server = ves_on_server.map { |vzlist_entry|
-      vzlist_entry = vzlist_entry.split.first
-    }
+    ves_ids_on_server = ves_on_server.map{ |vzlist_entry| vzlist_entry = vzlist_entry.split.first }
 
-    virtual_servers.each { |virtual_server|
-      if !ves_ids_on_server.include?(virtual_server.identity.to_s)
-        virtual_server.destroy
-      end
-    }
+    virtual_servers.each do |virtual_server|
+      virtual_server.destroy unless ves_ids_on_server.include?(virtual_server.identity.to_s)
+    end
 
-    ves_on_server.each { |vzlist_entry|
+    ves_on_server.each do |vzlist_entry|
       ve_id, host_name, ip_address, ve_state = vzlist_entry.split
 
       virtual_server = virtual_servers.find_by_identity(ve_id)
@@ -161,23 +155,19 @@ class HardwareServer < ActiveRecord::Base
       virtual_server.cpus = parser.get('CPUS')
       virtual_server.cpu_limit = parser.get('CPULIMIT')
       virtual_server.hardware_server = self
+      virtual_server.diskspace = get_diskspace_mb(parser.get('DISKSPACE'))
+      virtual_server.vswap = get_ram_mb(parser.get('SWAPPAGES'))
 
-      diskspace = parser.get('DISKSPACE')
-      if unlimited_limit?(diskspace)
-        virtual_server.diskspace = 0
+      if vswap and virtual_server.vswap > 0 and !unlimited_limit?(parser.get('PHYSPAGES'))
+        virtual_server.memory = get_ram_mb(parser.get('PHYSPAGES'))
       else
-        virtual_server.diskspace = diskspace.split(":").last.to_i / 1024
-      end
-
-      memory = parser.get('PRIVVMPAGES')
-      if unlimited_limit?(memory)
-        virtual_server.memory = 0
-      else
-        virtual_server.memory = memory.split(":").last.to_i * 4 / 1024
+        memory = parser.get('PRIVVMPAGES')
+        virtual_server.memory = unlimited_limit?(memory) ? 0 : memory.split(":").last.to_i * 4 / 1024
+        virtual_server.vswap = 0
       end
 
       virtual_server.save(false)
-    }
+    end
   end
 
   def sync_backups
@@ -186,7 +176,7 @@ class HardwareServer < ActiveRecord::Base
     # remove totals line
     backups_list.shift
 
-    backups_list.each { |backup_record|
+    backups_list.each do |backup_record|
       size, filename = backup_record.split
       next unless match = filename.match(/^ve-dump\.(\d+)\.\d+.tar$/)
 
@@ -203,7 +193,7 @@ class HardwareServer < ActiveRecord::Base
 
       backup = Backup.new(:name => filename, :size => size.to_i, :virtual_server_id => virtual_server.id)
       backup.save
-    }
+    end
   end
 
   def sync_config
@@ -218,6 +208,14 @@ class HardwareServer < ActiveRecord::Base
 
   def sync_server_info
     self.vzctl_version = rpc_client.exec('vzctl --version')['output'].split[2]
+
+    begin
+      rpc_client.exec('ls /proc/vz/vswap')
+      self.vswap = true
+    rescue HwDaemonExecException => e
+      self.vswap = false
+    end
+
     sync_config
     save
   end
@@ -268,6 +266,10 @@ class HardwareServer < ActiveRecord::Base
       list |= ip_pool.free_list
     end
     list
+  end
+
+  def ve_root
+    ve_private.sub('/private/', '/root/')
   end
 
   private

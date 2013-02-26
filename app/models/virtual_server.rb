@@ -3,14 +3,14 @@ class VirtualServer < ActiveRecord::Base
     :orig_os_template, :password, :start_on_boot, :start_after_creation, :state,
     :nameserver, :search_domain, :diskspace, :memory, :password_confirmation,
     :user_id, :orig_server_template, :description, :cpu_units, :cpus, :cpu_limit,
-    :expiration_date
+    :expiration_date, :vswap, :daily_backup
   attr_accessor :password, :password_confirmation, :start_after_creation
   belongs_to :hardware_server
   belongs_to :user
   has_many :backups, :dependent => :destroy
   has_many :bean_counters, :dependent => :destroy
 
-  validates_format_of :ip_address, :with => /^((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|\s|(([\da-fA-F]{1,4}:?)|(::)){1,8})*$/
+  validates_format_of :ip_address, :with => /^(((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(\/\d+)?|\s|(([\da-fA-F]{1,4}:?)|(::)){1,8})*|auto)$/
   validates_uniqueness_of :ip_address, :allow_blank => true
   validates_uniqueness_of :identity, :scope => :hardware_server_id
   validates_confirmation_of :password
@@ -19,17 +19,21 @@ class VirtualServer < ActiveRecord::Base
   validates_format_of :host_name, :with => /^[a-z0-9\-\.]*$/i
   validates_format_of :description, :with => /^[a-z0-9\-\.\s]*$/i if AppConfig.vzctl.save_descriptions
 
+  named_scope :daily_backed_up, :conditions => { :daily_backup => true }
+
   def self.ip_addresses
     result = []
-    VirtualServer.all.each { |virtual_server| virtual_server.ip_address.to_s.split.each { |ip_address|
-      result << {
-        :name => ip_address,
-        :virtual_server => virtual_server.screen_name,
-        :virtual_server_id => virtual_server.id,
-        :hardware_server => virtual_server.hardware_server.host,
-        :hardware_server_id => virtual_server.hardware_server.id,
-      }
-    }}
+    VirtualServer.all.each do |virtual_server|
+      virtual_server.ip_address.to_s.split.each do |ip_address|
+        result << {
+          :name => ip_address,
+          :virtual_server => virtual_server.screen_name,
+          :virtual_server_id => virtual_server.id,
+          :hardware_server => virtual_server.hardware_server.host,
+          :hardware_server_id => virtual_server.hardware_server.id,
+        }
+      end
+    end
     result
   end
 
@@ -42,17 +46,15 @@ class VirtualServer < ActiveRecord::Base
 
     limits = [
       'KMEMSIZE', 'LOCKEDPAGES', 'SHMPAGES', 'NUMPROC',
-      'PHYSPAGES', 'VMGUARPAGES', 'OOMGUARPAGES', 'NUMTCPSOCK', 'NUMFLOCK',
+      'VMGUARPAGES', 'OOMGUARPAGES', 'NUMTCPSOCK', 'NUMFLOCK',
       'NUMPTY', 'NUMSIGINFO', 'TCPSNDBUF', 'TCPRCVBUF', 'OTHERSOCKBUF',
       'DGRAMRCVBUF', 'NUMOTHERSOCK', 'DCACHESIZE', 'NUMFILE',
       'AVNUMPROC', 'NUMIPTENT', 'DISKINODES'
     ]
 
-    limits << 'SWAPPAGES' if (hardware_server.vzctl_version.split('.').map(&:to_i) <=> [3, 0, 24]) >= 0
-
     result = []
 
-    limits.each { |limit|
+    limits.each do |limit|
       raw_limit = parser.get(limit)
       raw_limit = 'unlimited' if raw_limit.blank?
       raw_limit = "#{raw_limit}:#{raw_limit}" if !raw_limit.include?(':')
@@ -60,7 +62,7 @@ class VirtualServer < ActiveRecord::Base
       limit_values[0] = '' if 'unlimited' == limit_values[0]
       limit_values[1] = '' if 'unlimited' == limit_values[1]
       result.push({ :name => limit, :soft_limit => limit_values[0], :hard_limit => limit_values[1] })
-    }
+    end
 
     result
   end
@@ -81,6 +83,7 @@ class VirtualServer < ActiveRecord::Base
 
   def delete_physically
     stop
+    hardware_server.rpc_client.exec("mkdir -p #{shellescape(root_dir)}")
     hardware_server.rpc_client.exec('vzctl', 'destroy ' + identity.to_s)
     backups.each { |backup| backup.delete_physically }
     destroy
@@ -90,14 +93,14 @@ class VirtualServer < ActiveRecord::Base
   def save_limits(limits)
     orig_limits = get_limits
     vzctl_params = ''
-    limits.each { |limit|
+    limits.each do |limit|
       orig_limit = orig_limits.find { |item| item[:name] == limit['name'] }
       if orig_limit[:soft_limit] != limit['soft_limit'] || orig_limit[:hard_limit] != limit['hard_limit']
         limit['soft_limit'] = 'unlimited' if '' == limit['soft_limit']
         limit['hard_limit'] = 'unlimited' if '' == limit['hard_limit']
         vzctl_params << "--" + limit['name'].downcase + " " + limit['soft_limit'].to_s + ":" + limit['hard_limit'].to_s + " "
       end
-    }
+    end
 
     vzctl_set("#{vzctl_params} --save")
   end
@@ -113,6 +116,11 @@ class VirtualServer < ActiveRecord::Base
       end
       hardware_server.rpc_client.exec('vzctl', "create #{identity.to_s} --ostemplate #{orig_os_template} --config #{orig_server_template}")
       self.state = 'stopped'
+
+      if 'auto' == ip_address
+        first_free_ip = hardware_server.free_ips.first
+        self.ip_address = first_free_ip ? first_free_ip : ''
+      end
     end
 
     if orig_server_template_changed?
@@ -133,8 +141,20 @@ class VirtualServer < ActiveRecord::Base
       vzctl_set("--ipdel all --save") if !ip_address_was.blank? and ip_address_changed?
       vzctl_set(ip_address.split.map { |ip| "--ipadd #{ip} " }.join + "--save") if !ip_address.blank? and ip_address_changed?
 
-      privvmpages = 0 == memory.to_i ? 'unlimited' : memory.to_i * 1024 / 4
-      vzctl_set("--privvmpages #{shellescape(privvmpages.to_s)} --save") if memory_changed?
+      if memory_changed?
+        if vswap and vswap > 0 and hardware_server.vswap
+          vzctl_set("--ram #{shellescape(memory.to_s)}M --save")
+        else
+          privvmpages = 0 == memory.to_i ? 'unlimited' : memory.to_i * 1024 / 4
+          vzctl_set("--privvmpages #{shellescape(privvmpages.to_s)} --save")
+          vzctl_set("--physpages unlimited --save")
+        end
+      end
+
+      if vswap_changed? and vswap and vswap > 0 and hardware_server.vswap
+        vzctl_set("--swap #{shellescape(vswap.to_s)}M --save")
+      end
+
       disk = 0 == diskspace.to_i ? 'unlimited' : diskspace.to_i * 1024
       vzctl_set("--diskspace #{shellescape(disk.to_s)} --save") if diskspace_changed?
     rescue HwDaemonExecException => exception
@@ -160,14 +180,14 @@ class VirtualServer < ActiveRecord::Base
 
     new_os_template = ""
     if orig_os_template_changed?
-      new_os_template = " --ostemplate #{orig_os_template} "
+      new_os_template = " --ostemplate #{shellescape(orig_os_template)} "
       save
     end
 
     hardware_server.rpc_client.exec("cp #{path}/#{self.identity}.conf #{path}/ve-#{tmp_template}.conf-sample")
     stop
     hardware_server.rpc_client.exec('vzctl', "destroy #{shellescape(identity.to_s)}")
-    hardware_server.rpc_client.exec('vzctl', "create #{shellescape(identity.to_s)} #{shellescape(new_os_template)} --config #{shellescape(tmp_template)}")
+    hardware_server.rpc_client.exec('vzctl', "create #{shellescape(identity.to_s)} #{new_os_template} --config #{shellescape(tmp_template)}")
     change_state('start', 'running') if was_running
     hardware_server.rpc_client.exec("rm #{path}/ve-#{shellescape(tmp_template)}.conf-sample")
 
@@ -222,6 +242,10 @@ class VirtualServer < ActiveRecord::Base
     hardware_server.ve_private.sub('$VEID', identity.to_s)
   end
 
+  def root_dir
+    hardware_server.ve_root.sub('$VEID', identity.to_s)
+  end
+
   def human_diskspace
     0 != self.diskspace ? self.diskspace : I18n.translate('admin.virtual_servers.limits.unlimited')
   end
@@ -243,6 +267,8 @@ class VirtualServer < ActiveRecord::Base
 
     path = '/etc/vz/conf'
     hardware_server.rpc_client.exec("cp #{shellescape(path)}/#{shellescape(orig_server.identity.to_s)}.conf #{shellescape(path)}/#{shellescape(identity.to_s)}.conf")
+
+    hardware_server.rpc_client.exec("mkdir -p #{shellescape(root_dir)}")
 
     orig_server.suspend
     hardware_server.rpc_client.exec("cp -a #{shellescape(orig_server.private_dir)} #{shellescape(self.private_dir)}")
@@ -291,11 +317,13 @@ class VirtualServer < ActiveRecord::Base
 
   def validate
     return if 0 == IpPool.count or ip_address.blank? or !ip_address_changed?
+    return if 'auto' == ip_address
 
     old_ips = ip_address_was.blank? ? [] : ip_address_was.split(' ')
 
     ip_address.split(' ').each do |ip|
       begin
+        ip, netmask = ip.split('/')
         ip = IPAddr.new(ip).to_s
       rescue
         msg = I18n.t('activerecord.errors.models.virtual_server.attributes.ip_address.invalid')
@@ -321,7 +349,7 @@ class VirtualServer < ActiveRecord::Base
     suspend if is_running
 
     begin
-      hardware_server.rpc_client.exec("tar --numeric-owner -czf #{shellescape(templates_path)}/#{shellescape(template_name)} -X /tmp/owp-template-exclude.list -C #{Shellwords.shellescape(private_dir)} .")
+      hardware_server.rpc_client.exec("tar --numeric-owner -czf #{shellescape(templates_path)}/#{shellescape(template_name)} -X /tmp/owp-template-exclude.list -C #{shellescape(private_dir)} .")
     rescue => e
       resume if is_running
       raise e
@@ -331,6 +359,21 @@ class VirtualServer < ActiveRecord::Base
 
     hardware_server.rpc_client.exec("rm /tmp/owp-template-exclude.list")
     hardware_server.sync_os_templates
+  end
+
+  def create_daily_backup
+    last_backup = backups.find_by_description('auto')
+    last_backup.delete_physically if last_backup
+
+    orig_ve_state = state
+    suspend if 'running' == orig_ve_state
+
+    backup_info = Backup.backup(self, false)
+    backup_info.description = 'auto'
+    backup_info.sync_size
+    backup_info.save
+
+    resume if 'running' == orig_ve_state
   end
 
   private

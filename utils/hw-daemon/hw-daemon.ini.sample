@@ -1,3 +1,4 @@
 address = 127.0.0.1
 port = 7767
 key = 7b4a238020f3d4f583796695b908be1c
+ssl = off

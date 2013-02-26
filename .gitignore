@@ -1,8 +1,9 @@
 log/*.log
 tmp/**/*
+tmp/*.txt
 db/*.sqlite3
 config/database.yml
-.idea
+config/config.yml
 utils/watchdog/watchdog.log
 utils/watchdog/watchdog.pid
 utils/hw-daemon/hw-daemon.log
@@ -11,6 +12,5 @@ utils/hw-daemon/hw-daemon.ini
 build/build.log
 build/ovz-web-panel-*.tgz
 build/ovz-web-panel
-*.sw?
 utils/hw-daemon/certs/server.crt
 utils/hw-daemon/certs/server.key

@@ -73,8 +73,9 @@ class ApplicationController < ActionController::Base
     end
 
     def iphone?
+      return false unless AppConfig.mobile.special_ui
       agent = request.env["HTTP_USER_AGENT"]
-      agent && (agent[/(Mobile\/.+Safari)/] || agent[/Android/])
+      agent && !agent[/iPad/] && (agent[/(Mobile\/.+Safari)/] || agent[/Android/])
     end
 
     def set_response_format
@@ -118,24 +119,28 @@ class ApplicationController < ActionController::Base
     def servers_list
       if @current_user.superadmin?
         @servers_list = HardwareServer.all
-        @servers_list.map! { |server| {
-          :cls => 'menu-item',
-          :text => server.host,
-          :href => '/admin/hardware-servers/show?id=' + server.id.to_s,
-          :icon => '/images/server.png',
-          :leaf => true,
-          :server_id => server.id.to_s,
-        }}
+        @servers_list.map! do |server|
+          {
+            :cls => 'menu-item',
+            :text => server.host,
+            :href => base_url + '/admin/hardware-servers/show?id=' + server.id.to_s,
+            :icon => base_url + '/images/server.png',
+            :leaf => true,
+            :server_id => server.id.to_s,
+          }
+        end
       else
         @servers_list = @current_user.virtual_servers
-        @servers_list = @servers_list.map { |server| {
-          :cls => 'menu-item',
-          :text => ('#' + server.identity.to_s) + (server.host_name.blank? ? '' : (' - ' + server.host_name)),
-          :href => '/admin/virtual-servers/show?id=' + server.id.to_s,
-          :icon => '/images/server.png',
-          :leaf => true,
-          :server_id => server.id.to_s,
-        }}
+        @servers_list = @servers_list.map do |server|
+          {
+            :cls => 'menu-item',
+            :text => ('#' + server.identity.to_s) + (server.host_name.blank? ? '' : (' - ' + server.host_name)),
+            :href => base_url + '/admin/virtual-servers/show?id=' + server.id.to_s,
+            :icon => base_url + '/images/server.png',
+            :leaf => true,
+            :server_id => server.id.to_s,
+          }
+        end
       end
     end
 
@@ -149,6 +154,10 @@ class ApplicationController < ActionController::Base
 
     def format_date(date)
       date.strftime("%Y.%m.%d")
+    end
+
+    def base_url
+      ActionController::Base.relative_url_root.to_s
     end
 
 end
